@@ -48,6 +48,13 @@ typedef struct {
     int16_t z;
 } SRAWDATA;
 
+
+/**
+* A driver on top of mbed-I2C to operate the FXOS8700CQ accelerometer/magnetometer
+* on the FRDM-K64F.
+*
+* Warning: incomplete code!
+*/
 class FXOS8700CQ
 {
 public:
@@ -70,6 +77,13 @@ public:
     void disable(void);
     uint8_t get_whoami(void);
     uint8_t status(void);
+    
+    /**
+    * Data retrieval from the FXOS8700CQ
+    *
+    * @param accel_data destination XYZ accelerometer data struct
+    * @param magn_data destination XYZ magnetometer data struct
+    */
     void get_data(SRAWDATA *accel_data, SRAWDATA *magn_data);
 
 
