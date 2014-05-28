@@ -116,7 +116,7 @@ typedef struct {
 * A driver on top of mbed-I2C to operate the FXOS8700CQ accelerometer/magnetometer
 * on the FRDM-K64F.
 *
-* Warning: incomplete code!
+* Code has been completed, but likely not optimized and potentially buggy.
 */
 class FXOS8700CQ
 {
@@ -137,9 +137,18 @@ public:
 
     void enable(void);
     void disable(void);
+
+    /**
+    * @return the contents of device register FXOS8700CQ_WHOAMI 0x0D,
+    * should be FXOS8700CQ_WHOAMI_VAL 0xC7
+    */
     uint8_t get_whoami(void);
-    uint8_t status(void);
     
+    /**
+    * @return the contents of device register FXOS8700CQ_STATUS 0x00
+    */
+    uint8_t status(void);
+
     /**
     * Data retrieval from the FXOS8700CQ
     *
@@ -148,10 +157,10 @@ public:
     * @return 0 on success, non-zero on failure
     */
     uint8_t get_data(SRAWDATA *accel_data, SRAWDATA *magn_data);
-    
+
     /**
     * Retrieve the full-range scale value of the accelerometer
-    * 
+    *
     * @return 2, 4, or 8, depending on part configuration; 0 on error
     */
     uint8_t get_accel_scale(void);
@@ -161,7 +170,7 @@ public:
 private:
     I2C dev_i2c; // instance of the mbed I2C class
     uint8_t dev_addr; // Device I2C address, in (7-bit << 1) form
-    bool enabled;
+    bool enabled; // keep track of enable bit of device
 
     // I2C helper methods
     void read_regs(int reg_addr, uint8_t* data, int len);
