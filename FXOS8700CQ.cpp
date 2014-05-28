@@ -11,29 +11,34 @@ FXOS8700CQ::FXOS8700CQ(PinName sda, PinName scl, int addr) : dev_i2c(sda, scl), 
     uint8_t data[6] = {0, 0, 0, 0, 0, 0}; // target device write address, single byte to write at address
 
     // TODO: verify WHOAMI?
-    
+
     // TODO: un-magic-number register configuration
 
     // Place peripheral in standby for configuration, resetting CTRL_REG1
     data[0] = FXOS8700CQ_CTRL_REG1;
-    // Keep data[1] as 0x00
+    data[1] = 0x00; // this will unset CTRL_REG1:active
     write_regs(data, 2);
 
     // Now that the device is in standby, configure registers
 
     // Setup for write-though for CTRL_REG series
     // Keep data[0] as FXOS8700CQ_CTRL_REG1
-    data[1] = 0x08; // 400 Hz single rate, 200 Hz hybrid mode
+    data[1] =
+        FXOS8700CQ_CTRL_REG1_ASLP_RATE2(1) | // 0b01 gives sleep rate of 12.5Hz
+        FXOS8700CQ_CTRL_REG1_DR3(1); // 0x001 gives ODR of 400Hz/200Hz hybrid
 
     // FXOS8700CQ_CTRL_REG2;
-    data[2] = 0x18; // set low power sleep sampling, no auto sleep, normal sampling
+    data[2] =
+        FXOS8700CQ_CTRL_REG2_SMODS2(3) | // 0b11 gives low power sleep oversampling mode
+        FXOS8700CQ_CTRL_REG2_MODS2(1); // 0b01 gives low noise, low power oversampling mode
 
     // No configuration changes from default 0x00 in CTRL_REG3
     // Interrupts will be active low
     data[3] = 0x00;
 
     // FXOS8700CQ_CTRL_REG4;
-    data[4] = 0x01; // enable data ready interrupt
+    data[4] =
+        FXOS8700CQ_CTRL_REG4_INT_EN_DRDY;
 
     // No configuration changes from default 0x00 in CTRL_REG5
     // Data ready interrupt will appear on INT2
@@ -42,24 +47,32 @@ FXOS8700CQ::FXOS8700CQ(PinName sda, PinName scl, int addr) : dev_i2c(sda, scl), 
     // Write to the 5 CTRL_REG registers
     write_regs(data, 6);
 
-    // No configuration changes from default 0x00 in XYZ_DATA_CFG
-    // No high pass filter and +/- 2g range for accelerometer
-    // Do not write any changes
+    // FXOS8700CQ_XYZ_DATA_CFG
+    data[0] = FXOS8700CQ_XYZ_DATA_CFG;
+    data[1] =
+        FXOS8700CQ_XYZ_DATA_CFG_FS2(1); // 0x01 gives 4g full range, 0.488mg/LSB
+    write_regs(data, 2);
 
     // Setup for write-through for M_CTRL_REG series
     data[0] = FXOS8700CQ_M_CTRL_REG1;
-    data[1] = 0x9F; // automatic calibration, maximum oversampling, hybrid sampling mode
+    data[1] =
+        FXOS8700CQ_M_CTRL_REG1_M_ACAL | // set automatic calibration
+        FXOS8700CQ_M_CTRL_REG1_MO_OS3(7) | // use maximum magnetic oversampling
+        FXOS8700CQ_M_CTRL_REG1_M_HMS2(3); // enable hybrid sampling (both sensors)
 
     // FXOS8700CQ_M_CTRL_REG2
-    data[2] = 0x20; // allow automatic read-through from accel to magn data at acc_z (0x05/0x06)
+    data[2] =
+        FXOS8700CQ_M_CTRL_REG2_HYB_AUTOINC_MODE;
 
     // FXOS8700CQ_M_CTRL_REG3
-    data[3] = 0x70; // use calibration data, sleep oversampling
+    data[3] =
+        FXOS8700CQ_M_CTRL_REG3_M_ASLP_OS3(7); // maximum sleep magnetic oversampling
 
     // Write to the 3 M_CTRL_REG registers
     write_regs(data, 4);
 
     // Peripheral is configured, but disabled
+    enabled = false;
 }
 
 // Destruct class
@@ -70,18 +83,22 @@ void FXOS8700CQ::enable(void)
 {
     uint8_t data[2];
     read_regs( FXOS8700CQ_CTRL_REG1, &data[1], 1);
-    data[1] |= 0x01; // set bit 0, CTRL_REG1:active
+    data[1] |= FXOS8700CQ_CTRL_REG1_ACTIVE;
     data[0] = FXOS8700CQ_CTRL_REG1;
     write_regs(data, 2); // write back
+
+    enabled = true;
 }
 
 void FXOS8700CQ::disable(void)
 {
     uint8_t data[2];
     read_regs( FXOS8700CQ_CTRL_REG1, &data[1], 1);
-    data[1] &= 0xFE; // unset bit 0, CTRL_REG1:active
     data[0] = FXOS8700CQ_CTRL_REG1;
+    data[1] &= ~FXOS8700CQ_CTRL_REG1_ACTIVE;
     write_regs(data, 2); // write back
+
+    enabled = false;
 }
 
 
@@ -98,22 +115,55 @@ uint8_t FXOS8700CQ::get_whoami(void)
     return databyte;
 }
 
-void FXOS8700CQ::get_data(SRAWDATA *accel_data, SRAWDATA *magn_data)
+uint8_t FXOS8700CQ::get_data(SRAWDATA *accel_data, SRAWDATA *magn_data)
 {
-    read_regs(FXOS8700CQ_OUT_X_MSB, raw, FXOS8700CQ_READ_LEN); // WRONG, getting accel then magn
+    if(!enabled) {
+        return 1;
+    }
+
+    read_regs(FXOS8700CQ_M_OUT_X_MSB, raw, FXOS8700CQ_READ_LEN);
 
     // Pull out 16-bit, 2's complement magnetometer data
     magn_data->x = (raw[0] << 8) | raw[1];
     magn_data->y = (raw[2] << 8) | raw[3];
     magn_data->z = (raw[4] << 8) | raw[5];
 
-    // Below is wrong, using left-justified version
     // Pull out 14-bit, 2's complement, right-justified accelerometer data
     accel_data->x = (raw[6] << 8) | raw[7];
     accel_data->y = (raw[8] << 8) | raw[9];
     accel_data->z = (raw[10] << 8) | raw[11];
+
+    // Have to apply corrections to make the int16_t correct
+    if(accel_data->x > UINT14_MAX/2) {
+        accel_data->x -= UINT14_MAX;
+    }
+    if(accel_data->y > UINT14_MAX/2) {
+        accel_data->y -= UINT14_MAX;
+    }
+    if(accel_data->z > UINT14_MAX/2) {
+        accel_data->z -= UINT14_MAX;
+    }
+
+    return 0;
 }
 
+uint8_t FXOS8700CQ::get_accel_scale(void)
+{
+    uint8_t data = 0x00;
+    read_regs(FXOS8700CQ_XYZ_DATA_CFG, &data, 1);
+    data &= FXOS8700CQ_XYZ_DATA_CFG_FS2(3); // mask with 0b11
+
+    switch(data) {
+        case FXOS8700CQ_XYZ_DATA_CFG_FS2(0):
+            return 2;
+        case FXOS8700CQ_XYZ_DATA_CFG_FS2(1):
+            return 4;
+        case FXOS8700CQ_XYZ_DATA_CFG_FS2(2):
+            return 8;
+        default:
+            return 0;
+    }
+}
 
 // Private methods
 
