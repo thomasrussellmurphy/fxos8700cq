@@ -8,18 +8,16 @@ FXOS8700CQ::FXOS8700CQ(PinName sda, PinName scl, int addr) : dev_i2c(sda, scl), 
 {
     // Initialization of the FXOS8700CQ
     dev_i2c.frequency(I2C_400K); // Use maximum I2C frequency
-    uint8_t data[6] = {0, 0, 0, 0, 0, 0}; // target device write address, single byte to write at address
+    uint8_t data[6] = {0, 0, 0, 0, 0, 0}; // to write over I2C: device register, up to 5 bytes data
 
     // TODO: verify WHOAMI?
-
-    // TODO: un-magic-number register configuration
 
     // Place peripheral in standby for configuration, resetting CTRL_REG1
     data[0] = FXOS8700CQ_CTRL_REG1;
     data[1] = 0x00; // this will unset CTRL_REG1:active
     write_regs(data, 2);
 
-    // Now that the device is in standby, configure registers
+    // Now that the device is in standby, configure registers at will
 
     // Setup for write-though for CTRL_REG series
     // Keep data[0] as FXOS8700CQ_CTRL_REG1
@@ -33,15 +31,15 @@ FXOS8700CQ::FXOS8700CQ(PinName sda, PinName scl, int addr) : dev_i2c(sda, scl), 
         FXOS8700CQ_CTRL_REG2_MODS2(1); // 0b01 gives low noise, low power oversampling mode
 
     // No configuration changes from default 0x00 in CTRL_REG3
-    // Interrupts will be active low
+    // Interrupts will be active low, their outputs in push-pull mode
     data[3] = 0x00;
 
     // FXOS8700CQ_CTRL_REG4;
     data[4] =
-        FXOS8700CQ_CTRL_REG4_INT_EN_DRDY;
+        FXOS8700CQ_CTRL_REG4_INT_EN_DRDY; // Enable the Data-Ready interrupt
 
     // No configuration changes from default 0x00 in CTRL_REG5
-    // Data ready interrupt will appear on INT2
+    // Data-Ready interrupt will appear on INT2
     data[5] = 0x00;
 
     // Write to the 5 CTRL_REG registers
@@ -153,6 +151,7 @@ uint8_t FXOS8700CQ::get_accel_scale(void)
     read_regs(FXOS8700CQ_XYZ_DATA_CFG, &data, 1);
     data &= FXOS8700CQ_XYZ_DATA_CFG_FS2(3); // mask with 0b11
 
+    // Choose output value based on masked data
     switch(data) {
         case FXOS8700CQ_XYZ_DATA_CFG_FS2(0):
             return 2;
@@ -167,6 +166,8 @@ uint8_t FXOS8700CQ::get_accel_scale(void)
 
 // Private methods
 
+// Excepting the call to dev_i2c.frequency() in the constructor,
+// the use of the mbed I2C class is restricted to these methods
 void FXOS8700CQ::read_regs(int reg_addr, uint8_t* data, int len)
 {
     char t[1] = {reg_addr};
