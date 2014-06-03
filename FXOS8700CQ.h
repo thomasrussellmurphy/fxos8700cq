@@ -97,10 +97,6 @@
 // 6 channels of two bytes = 12 bytes; read from FXOS8700CQ_OUT_X_MSB
 #define FXOS8700CQ_READ_LEN 12
 
-// From mbed I2C documentation for complete read/write transactions
-#define I2C_SUCCESS 0
-#define I2C_FAILURE 1
-
 // For processing the accelerometer data to right-justified 2's complement
 #define UINT14_MAX 16383
 
